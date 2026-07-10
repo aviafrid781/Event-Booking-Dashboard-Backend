@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { QueryFailedError, Repository } from 'typeorm';
@@ -41,6 +41,18 @@ export class BookingsService {
    * is safe to retry.
    */
   async create(dto: CreateBookingDto): Promise<Booking> {
+    const event = await this.bookingRepo.manager.findOne(Event, {
+      where: { id: dto.eventId },
+    });
+
+    if (!event) {
+      throw new BadRequestException(`Event ${dto.eventId} does not exist`);
+    }
+
+    if (event.date.getTime() <= Date.now()) {
+      throw new BadRequestException('Booking cannot be created for an event that has already started or finished.');
+    }
+
     const booking = this.bookingRepo.create({
       reference: uuidv4(),
       requestId: dto.requestId,
