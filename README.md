@@ -21,6 +21,8 @@ npm run start:dev
 
 The backend uses `.env.example` for runtime configuration. If you run `docker compose up -d` from the repo root, the defaults should work.
 
+- `API_TOKEN` is required and must match the frontend `VITE_API_TOKEN` value.
+
 ## API Endpoints
 
 ### `GET /events`
@@ -28,6 +30,7 @@ Returns events with live remaining-seat counts.
 
 ### `POST /bookings`
 Creates a new booking request.
+- Requires `Authorization: Bearer <API_TOKEN>` header.
 - Accepts: `requestId`, `eventId`, `customerName`, `customerEmail`, `seats`
 - Returns: `202 Accepted` with `reference`, `status`, and a processing message.
 - Duplicate `requestId` values are handled idempotently by returning the existing booking.

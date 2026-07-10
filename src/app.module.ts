@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BookingsModule } from './bookings/bookings.module';
 import { buildDataSourceOptions } from './database/data-source.options';
 import { EventsModule } from './events/events.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { EventsModule } from './events/events.module';
     }),
     EventsModule,
     BookingsModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
