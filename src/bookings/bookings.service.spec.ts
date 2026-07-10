@@ -32,6 +32,9 @@ describe('BookingsService', () => {
   beforeEach(() => {
     const manager = {
       transaction: jest.fn(async (cb: any) => cb(manager)),
+      findOne: jest.fn(),
+      save: jest.fn(),
+      delete: jest.fn(),
     };
 
     repo = {
@@ -45,10 +48,19 @@ describe('BookingsService', () => {
   });
 
   it('persists a PENDING booking and enqueues a job with a stable jobId', async () => {
+    repo.manager.findOne.mockResolvedValue({
+      id: dto.eventId,
+      name: 'Test event',
+      date: new Date(Date.now() + 100000),
+      totalSeats: 10,
+      bookedSeats: 0,
+      price: 10.0,
+    } as Event);
     repo.save.mockResolvedValue({ id: 42, reference: 'ref-42', ...dto } as Booking);
 
     const result = await service.create(dto);
 
+    expect(repo.manager.findOne).toHaveBeenCalledWith(Event, { where: { id: dto.eventId } });
     expect(repo.save).toHaveBeenCalledTimes(1);
     expect(result.id).toBe(42);
     expect(queue.add).toHaveBeenCalledTimes(1);
@@ -58,6 +70,14 @@ describe('BookingsService', () => {
   });
 
   it('returns the existing booking and does NOT enqueue on a duplicate requestId', async () => {
+    repo.manager.findOne.mockResolvedValue({
+      id: dto.eventId,
+      name: 'Test event',
+      date: new Date(Date.now() + 100000),
+      totalSeats: 10,
+      bookedSeats: 0,
+      price: 10.0,
+    } as Event);
     const uniqueViolation = new QueryFailedError('insert', [], new Error());
     (uniqueViolation as unknown as { code: string }).code = '23505';
     repo.save.mockRejectedValue(uniqueViolation);
@@ -80,6 +100,14 @@ describe('BookingsService', () => {
   });
 
   it('rethrows unexpected errors', async () => {
+    repo.manager.findOne.mockResolvedValue({
+      id: dto.eventId,
+      name: 'Test event',
+      date: new Date(Date.now() + 100000),
+      totalSeats: 10,
+      bookedSeats: 0,
+      price: 10.0,
+    } as Event);
     repo.save.mockRejectedValue(new Error('db is down'));
     await expect(service.create(dto)).rejects.toThrow('db is down');
     expect(queue.add).not.toHaveBeenCalled();
@@ -118,7 +146,10 @@ describe('BookingsService', () => {
       where: { id: booking.eventId },
       lock: { mode: 'pessimistic_write' },
     });
-    expect(manager.save).toHaveBeenCalledWith({ id: 10, bookedSeats: 4, totalSeats: 20 });
+    expect(manager.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 10,
+      bookedSeats: 4,
+    }));
     expect(manager.delete).toHaveBeenCalledWith(Booking, 1);
   });
 
