@@ -141,17 +141,58 @@ export class BookingsService {
   }
 
   /**
-   * Updates the editable customer/seat fields of a booking. The event and
-   * status are intentionally left untouched — seat allocation is owned by the
-   * queue worker, not by this endpoint.
+   * Updates the editable customer/seat fields of a booking.
+   *
+   * For confirmed bookings, changing the seat count must update the event's
+   * committed bookedSeats total inside a locked transaction.
    */
   async update(id: number, dto: UpdateBookingDto): Promise<Booking> {
     const booking = await this.findOne(id);
+    const seatDelta = dto.seats !== undefined ? dto.seats - booking.seats : 0;
+    const finalSeats = dto.seats !== undefined ? dto.seats : booking.seats;
+
     if (dto.customerName !== undefined) booking.customerName = dto.customerName;
     if (dto.customerEmail !== undefined)
       booking.customerEmail = dto.customerEmail;
-    if (dto.seats !== undefined) booking.seats = dto.seats;
-    return this.bookingRepo.save(booking);
+
+    if (dto.seats === undefined || seatDelta === 0) {
+      if (dto.seats !== undefined) booking.seats = dto.seats;
+      return this.bookingRepo.save(booking);
+    }
+
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      booking.seats = dto.seats;
+      return this.bookingRepo.save(booking);
+    }
+
+    let savedBooking: Booking;
+    await this.bookingRepo.manager.transaction(async (manager) => {
+      const event = await manager.findOne(Event, {
+        where: { id: booking.eventId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!event) {
+        throw new NotFoundException(`Event ${booking.eventId} not found`);
+      }
+
+      if (seatDelta > 0) {
+        const remaining = event.totalSeats - event.bookedSeats;
+        if (remaining < seatDelta) {
+          throw new BadRequestException(
+            `Cannot increase seats to ${finalSeats}; only ${remaining} seats are available`,
+          );
+        }
+      }
+
+      event.bookedSeats = Math.max(0, event.bookedSeats + seatDelta);
+      booking.seats = finalSeats;
+
+      await manager.save(event);
+      savedBooking = await manager.save(booking);
+    });
+
+    return savedBooking!;
   }
 
   async remove(id: number): Promise<void> {

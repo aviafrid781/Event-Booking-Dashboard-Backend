@@ -33,7 +33,7 @@ describe('BookingsService', () => {
     const manager = {
       transaction: jest.fn(async (cb: any) => cb(manager)),
       findOne: jest.fn(),
-      save: jest.fn(),
+      save: jest.fn(async (entity: unknown) => entity),
       delete: jest.fn(),
     };
 
@@ -97,6 +97,46 @@ describe('BookingsService', () => {
       where: { requestId: dto.requestId },
     });
     expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('updates a CONFIRMED booking and adjusts event booked seats', async () => {
+    const booking = {
+      id: 1,
+      eventId: 10,
+      seats: 1,
+      status: BookingStatus.CONFIRMED,
+      customerName: 'Rahim',
+      customerEmail: 'rahim@example.com',
+    } as Booking;
+
+    repo.findOne.mockResolvedValue(booking);
+    repo.manager.findOne.mockResolvedValueOnce({
+      id: 10,
+      totalSeats: 10,
+      bookedSeats: 1,
+      name: 'Test event',
+      date: new Date(Date.now() + 100000),
+      price: 10.0,
+      bookings: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as Event);
+
+    const result = await service.update(1, { seats: 5 });
+
+    expect(repo.manager.findOne).toHaveBeenCalledWith(Event, {
+      where: { id: booking.eventId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(repo.manager.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 10,
+      bookedSeats: 5,
+    }));
+    expect(repo.manager.save).toHaveBeenCalledWith(expect.objectContaining({
+      id: 1,
+      seats: 5,
+    }));
+    expect(result.seats).toBe(5);
   });
 
   it('rethrows unexpected errors', async () => {
