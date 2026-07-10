@@ -54,4 +54,11 @@ export class BookingsController {
   ) {
     return this.bookingsService.update(id, dto);
   }
+
+  /** Delete a booking and release seats if the booking was CONFIRMED. */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    return this.bookingsService.remove(id);
+  }
 }

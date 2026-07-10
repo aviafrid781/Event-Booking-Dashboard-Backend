@@ -10,6 +10,7 @@ import {
   ProcessBookingJobData,
 } from './booking.constants';
 import { Booking, BookingStatus } from './booking.entity';
+import { Event } from '../events/event.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
@@ -141,12 +142,31 @@ export class BookingsService {
     return this.bookingRepo.save(booking);
   }
 
-  /** Deletes a booking, or throws 404 if it doesn't exist. */
   async remove(id: number): Promise<void> {
-    const result = await this.bookingRepo.delete(id);
-    if (!result.affected) {
-      throw new NotFoundException(`Booking ${id} not found`);
-    }
+    await this.bookingRepo.manager.transaction(async (manager) => {
+      const booking = await manager.findOne(Booking, { where: { id } });
+      if (!booking) {
+        throw new NotFoundException(`Booking ${id} not found`);
+      }
+
+      if (booking.status === BookingStatus.CONFIRMED) {
+        const event = await manager.findOne(Event, {
+          where: { id: booking.eventId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!event) {
+          throw new NotFoundException(
+            `Event ${booking.eventId} for booking ${id} not found`,
+          );
+        }
+
+        event.bookedSeats = Math.max(0, event.bookedSeats - booking.seats);
+        await manager.save(event);
+      }
+
+      await manager.delete(Booking, id);
+    });
   }
 
   private isUniqueViolation(err: unknown): boolean {
